@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Labbubles</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Babel for JSX and TypeScript Transpilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Import Map for loading modules like React from a CDN -->
+    <script type="importmap">
+{
+  "imports": {
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "react": "https://esm.sh/react@18.2.0",
+    "lucide-react": "https://esm.sh/lucide-react@0.368.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-100">
+    <div id="root"></div>
+    
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useMemo } from 'react';
+      import ReactDOM from 'react-dom/client';
+      import { LogOut, Trash2, PlusCircle, XCircle, DollarSign, Droplets, Shirt, CheckCircle } from 'lucide-react';
+
+      // --- TYPES ---
+      const ClientRole = {
+        ADMIN: 'admin',
+        CLIENT: 'client'
+      };
+
+      // --- HOOK: useLocalStorage ---
+      const useLocalStorage = (key, defaultValue) => {
+        const getStorageValue = (k, dv) => {
+          if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem(k);
+            if (saved) {
+              try {
+                return JSON.parse(saved);
+              } catch (error) {
+                console.error(`Error parsing JSON from localStorage key "${k}". Resetting to default.`, error);
+                localStorage.removeItem(k); // Self-heal by removing corrupted data
+                return dv;
+              }
+            }
+          }
+          return dv;
+        }
+
+        const [value, setValue] = useState(() => {
+          return getStorageValue(key, defaultValue);
+        });
+
+        useEffect(() => {
+          localStorage.setItem(key, JSON.stringify(value));
+        }, [key, value]);
+
+        return [value, setValue];
+      };
+      
+      // --- UI COMPONENT: Tabs ---
+      const Tabs = ({ tabs, activeTab, onTabChange }) => {
+        return (
+          <div>
+            <div className="flex flex-wrap justify-center mb-6 border-b-2 border-slate-200 pb-2">
+              {tabs.map((tab, index) => (
+                <button
+                  key={index}
+                  onClick={() => onTabChange(index)}
+                  className={`px-4 py-2 text-sm sm:text-base font-bold rounded-lg transition-all duration-300 mx-1 my-1 grow sm:grow-0
+                    ${activeTab === index 
+                      ? 'bg-blue-600 text-white shadow-md' 
+                      : 'bg-slate-100 text-blue-600 hover:bg-slate-200'
+                    }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div>
+              {tabs[activeTab].content}
+            </div>
+          </div>
+        );
+      };
+
+      // --- ADMIN COMPONENT: AdminClientsTab ---
+      const AdminClientsTab = () => {
+        const [clients] = useLocalStorage('clients', []);
+        const clientList = clients.filter(c => c.role === ClientRole.CLIENT);
+
+        return (
+          <div>
+            <h3 className="text-xl font-bold mb-4 text-slate-700">Registered Clients</h3>
+            {clientList.length === 0 ? (
+              <p className="text-center text-slate-500 mt-8">No clients have registered yet.</p>
+            ) : (
+              <ul className="space-y-2 bg-slate-50 p-4 rounded-lg border">
+                {clientList.map(client => (
+                  <li key={client.username} className="p-3 bg-white border-l-4 border-blue-500 rounded-md shadow-sm">
+                    {client.username}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      };
+
+      // --- ADMIN COMPONENT: AdminSoapsTab ---
+      const AdminSoapsTab = () => {
+          const [soaps, setSoaps] = useLocalStorage('soaps', []);
+          const [name, setName] = useState('');
+          const [price, setPrice] = useState('');
+          const [quantity, setQuantity] = useState('');
+          const [image, setImage] = useState(null);
+          const [error, setError] = useState('');
+          const [editingSoapName, setEditingSoapName] = useState(null);
+
+          const handleImageChange = (e) => {
+              if (e.target.files && e.target.files[0]) {
+                  const reader = new FileReader();
+                  reader.onload = (event) => setImage(event.target?.result);
+                  reader.readAsDataURL(e.target.files[0]);
+              }
+          };
+
+          const resetForm = () => {
+              setName(''); setPrice(''); setQuantity(''); setImage(null); setError('');
+              const fileInput = document.getElementById('soapImage');
+              if(fileInput) fileInput.value = '';
+          };
+          
+          const cancelEditing = () => {
+              setEditingSoapName(null);
+              resetForm();
+          };
+
+          const addSoap = () => {
+              setError('');
+              const numPrice = parseFloat(price);
+              const numQuantity = parseInt(quantity, 10);
+              if (!name || isNaN(numPrice) || numPrice < 0 || isNaN(numQuantity) || numQuantity < 0 || !image) {
+                  setError('Please fill out all fields with valid information and select an image.');
+                  return;
+              }
+              if (soaps.some(s => s.name.toLowerCase() === name.toLowerCase())) {
+                  setError('A soap with this name already exists.');
+                  return;
+              }
+              const newSoap = { name, price: numPrice, quantity: numQuantity, image };
+              setSoaps([...soaps, newSoap].sort((a,b) => a.name.localeCompare(b.name)));
+              resetForm();
+          };
+          
+          const updateSoap = () => {
+              setError('');
+              const numPrice = parseFloat(price);
+              const numQuantity = parseInt(quantity, 10);
+              if (!name || isNaN(numPrice) || numPrice < 0 || isNaN(numQuantity) || numQuantity < 0) {
+                  setError('Please ensure price and quantity are valid numbers.');
+                  return;
+              }
+              setSoaps(soaps.map(s => 
+                  s.name === editingSoapName 
+                  ? { ...s, price: numPrice, quantity: numQuantity, image: image || s.image } // Keep old image if new one isn't selected
+                  : s
+              ));
+              cancelEditing();
+          };
+
+          const deleteSoap = (soapName) => {
+              if (!window.confirm("Are you sure you want to delete this soap?")) return;
+              setSoaps(soaps.filter(s => s.name !== soapName));
+              if (editingSoapName === soapName) {
+                  cancelEditing();
+              }
+          };
+
+          const startEditing = (soap) => {
+              setEditingSoapName(soap.name);
+              setName(soap.name);
+              setPrice(String(soap.price));
+              setQuantity(String(soap.quantity));
+              setImage(soap.image);
+              setError('');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+          };
+
+          return (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  <div className="lg:col-span-1 p-6 bg-slate-50 rounded-xl border border-slate-200 self-start">
+                      <h3 className="text-xl font-bold mb-4 text-slate-700">{editingSoapName ? `Edit "${editingSoapName}"` : 'Add New Soap'}</h3>
+                      {error && <p className="text-red-500 bg-red-100 p-3 rounded-lg mb-4">{error}</p>}
+                      <div className="space-y-4">
+                          <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Soap Name" className="w-full p-2 border rounded-md disabled:bg-slate-200 disabled:cursor-not-allowed" readOnly={!!editingSoapName} />
+                          <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="Price" className="w-full p-2 border rounded-md" />
+                          <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Quantity" className="w-full p-2 border rounded-md" />
+                          <label className="block text-sm font-medium text-slate-700">{editingSoapName ? 'Change Image (Optional)' : 'Upload Image'}</label>
+                          <input type="file" id="soapImage" onChange={handleImageChange} accept="image/*" className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                          <div className="flex gap-2 pt-2">
+                              {editingSoapName ? (
+                                  <>
+                                      <button onClick={updateSoap} className="flex-1 bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700 transition">Update</button>
+                                      <button onClick={cancelEditing} className="flex-1 bg-slate-500 text-white font-bold py-2 rounded-lg hover:bg-slate-600 transition">Cancel</button>
+                                  </>
+                              ) : (
+                                  <button onClick={addSoap} className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 transition">Add Soap</button>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+                  <div className="lg:col-span-2">
+                       <h3 className="text-xl font-bold mb-4 text-slate-700">Soap Inventory</h3>
+                       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto pr-2">
+                          {soaps.length === 0 ? (
+                              <p className="text-center text-slate-500 mt-8 col-span-full">No soaps in inventory.</p>
+                          ) : (
+                              soaps.map(soap => (
+                                  <div key={soap.name} className="p-4 bg-white rounded-lg shadow-sm border flex flex-col">
+                                      <img src={soap.image} alt={soap.name} className="w-full h-32 object-cover rounded-md mb-3" />
+                                      <div className="flex-grow">
+                                          <p className="font-bold text-lg">{soap.name}</p>
+                                          <p className="text-slate-600 font-semibold">₱{soap.price.toFixed(2)}</p>
+                                          <p className="text-sm text-slate-500">Stock: <span className="font-bold">{soap.quantity}</span></p>
+                                      </div>
+                                      <div className="mt-4 flex gap-2">
+                                          <button onClick={() => startEditing(soap)} className="flex-1 text-xs bg-slate-200 text-slate-800 font-semibold py-1.5 px-2 rounded-md hover:bg-slate-300 transition">Edit</button>
+                                          <button onClick={() => deleteSoap(soap.name)} className="flex-1 text-xs bg-red-500 text-white font-semibold py-1.5 px-2 rounded-md hover:bg-red-600 transition">Delete</button>
+                                      </div>
+                                  </div>
+                              ))
+                          )}
+                       </div>
+                  </div>
+              </div>
+          );
+      };
+
+      // --- ADMIN COMPONENT: AdminLaundryTab ---
+      const AdminLaundryTab = () => {
+          const [products, setProducts] = useLocalStorage('products', []);
+          const [clients, setClients] = useLocalStorage('clients', []);
+          const [soaps, setSoaps] = useLocalStorage('soaps', []);
+          
+          const [kg, setKg] = useState('');
+          const [price, setPrice] = useState('');
+          const [selectedClient, setSelectedClient] = useState('');
+          const [selectedSoaps, setSelectedSoaps] = useState([{ soapIndex: '', quantity: '' }]);
+          const [error, setError] = useState('');
+
+          const clientList = useMemo(() => clients.filter(c => c.role === ClientRole.CLIENT), [clients]);
+          const availableSoaps = useMemo(() => soaps.filter(s => s.quantity > 0), [soaps]);
+          const activeProducts = useMemo(() => products.filter(p => !p.pickedUp), [products]);
+
+          useEffect(() => {
+              const numKg = parseFloat(kg);
+              if (numKg > 0) {
+                  setPrice(String(numKg * 20));
+              } else {
+                  setPrice('');
+              }
+          }, [kg]);
+
+          const handleSoapChange = (index, field, value) => {
+              const newSelectedSoaps = [...selectedSoaps];
+              newSelectedSoaps[index][field] = value;
+              setSelectedSoaps(newSelectedSoaps);
+          };
+
+          const addSoapSelection = () => {
+              if (selectedSoaps.length < 5) {
+                  setSelectedSoaps([...selectedSoaps, { soapIndex: '', quantity: '' }]);
+              }
+          };
+          
+          const removeSoapSelection = (index) => {
+              const newSelectedSoaps = selectedSoaps.filter((_, i) => i !== index);
+              setSelectedSoaps(newSelectedSoaps);
+          };
+
+          const resetForm = () => {
+              setKg('');
+              setPrice('');
+              setSelectedClient('');
+              setSelectedSoaps([{ soapIndex: '', quantity: '' }]);
+              setError('');
+          };
+
+          const addProduct = () => {
+              setError('');
+              const numKg = parseFloat(kg);
+              const numPrice = parseFloat(price);
+
+              if (!kg || numKg <= 0 || !price || numPrice <= 0 || !selectedClient) {
+                  setError('Please fill out all required fields: weight and client.');
+                  return;
+              }
+              
+              if (selectedSoaps.some(s => s.soapIndex === '' || !s.quantity || parseInt(s.quantity, 10) <= 0)) {
+                  setError('Please select a soap and enter a valid quantity for each entry.');
+                  return;
+              }
+              
+              const soapsToDeduct = {};
+              const soapsUsedInOrder = [];
+
+              for (const selection of selectedSoaps) {
+                  const soap = availableSoaps[selection.soapIndex];
+                  const quantity = parseInt(selection.quantity, 10);
+                  
+                  if (!soap) {
+                     setError('An invalid soap was selected. Please refresh and try again.'); return;
+                  }
+                  
+                  soapsToDeduct[soap.name] = (soapsToDeduct[soap.name] || 0) + quantity;
+                  soapsUsedInOrder.push({ name: soap.name, price: soap.price, quantity: quantity });
+              }
+
+              for (const soapName in soapsToDeduct) {
+                  const soapInStock = soaps.find(s => s.name === soapName);
+                  if (!soapInStock || soapInStock.quantity < soapsToDeduct[soapName]) {
+                      setError(`Not enough stock for ${soapName}. Required: ${soapsToDeduct[soapName]}, Available: ${soapInStock ? soapInStock.quantity : 0}.`);
+                      return;
+                  }
+              }
+
+              const newProduct = {
+                  id: Date.now(), kg: numKg, price: numPrice,
+                  client: selectedClient, ready: false, pickedUp: false,
+                  soapsUsed: soapsUsedInOrder,
+                  orderDate: new Date().toISOString()
+              };
+              
+              setProducts([...products, newProduct]);
+              
+              const updatedSoaps = soaps.map(soap => {
+                  if (soapsToDeduct[soap.name]) {
+                      return { ...soap, quantity: soap.quantity - soapsToDeduct[soap.name] };
+                  }
+                  return soap;
+              });
+              setSoaps(updatedSoaps);
+              
+              const clientIndex = clients.findIndex(c => c.username === selectedClient);
+              if(clientIndex !== -1) {
+                  const soapsSummary = soapsUsedInOrder.map(s => `${s.quantity}x ${s.name}`).join(', ');
+                  const updatedClients = [...clients];
+                  if (!updatedClients[clientIndex].notifications) {
+                    updatedClients[clientIndex].notifications = [];
+                  }
+                  const typeText = "Laundry";
+                  updatedClients[clientIndex].notifications.unshift(`Your ${typeText} has been received. Soaps: ${soapsSummary}.`);
+                  setClients(updatedClients);
+              }
+              resetForm();
+          };
+
+          const toggleReadyStatus = (productId, newStatus) => {
+              const productIndex = products.findIndex(p => p.id === productId);
+              if (productIndex === -1) return;
+              const product = products[productIndex];
+
+              const updatedProducts = [...products];
+              updatedProducts[productIndex].ready = newStatus;
+              setProducts(updatedProducts);
+
+              const typeText = 'Laundry';
+              const notificationMessage = newStatus 
+                  ? `Your ${typeText} is now ready for pickup.`
+                  : `Update: Your ${typeText} is no longer marked as ready.`;
+
+              const clientIndex = clients.findIndex(c => c.username === product.client);
+              if (clientIndex !== -1) {
+                  const updatedClients = [...clients];
+                  if (!updatedClients[clientIndex].notifications) {
+                    updatedClients[clientIndex].notifications = [];
+                  }
+                  updatedClients[clientIndex].notifications.unshift(notificationMessage);
+                  setClients(updatedClients);
+              }
+          };
+          
+          const deleteProduct = (productId) => {
+              if (!window.confirm("Are you sure you want to delete this laundry item? This action cannot be undone.")) return;
+              setProducts(products.filter(p => p.id !== productId));
+          };
+          
+          const calculateSoapsPrice = (soapsUsed) => {
+              return (Array.isArray(soapsUsed) ? soapsUsed : []).reduce((acc, s) => acc + (Number(s.price) * Number(s.quantity)), 0);
+          };
+          
+          const calculateTotalPrice = (product) => {
+              const laundryPrice = Number(product.price) || 0;
+              const soapsPrice = calculateSoapsPrice(product.soapsUsed);
+              return laundryPrice + soapsPrice;
+          };
+
+          return (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  <div className="lg:col-span-1 p-6 bg-slate-50 rounded-xl border border-slate-200 self-start">
+                      <h3 className="text-xl font-bold mb-4 text-slate-700">Add Client Laundry</h3>
+                      {error && <p className="text-red-500 bg-red-100 p-3 rounded-lg mb-4">{error}</p>}
+                      <div className="space-y-4">
+                          <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)} className="w-full p-2 border rounded-md bg-white">
+                              <option value="">-- Select Client --</option>
+                              {clientList.map(c => <option key={c.username} value={c.username}>{c.username}</option>)}
+                          </select>
+                          
+                          <input type="number" value={kg} onChange={e => setKg(e.target.value)} placeholder="Weight (KG)" className="w-full p-2 border rounded-md" />
+
+                          <div className="p-3 bg-blue-100 border-l-4 border-blue-500 rounded-lg">
+                              <span className="font-bold text-lg text-blue-800 block">Laundry Price: ₱{parseFloat(price || 0).toFixed(2)}</span>
+                              <p className="text-sm text-blue-700 text-right">@ ₱20.00 / KG</p>
+                          </div>
+                          
+                          <div className="space-y-3 pt-2">
+                              <label className="font-semibold text-slate-600">Soaps Used</label>
+                              {selectedSoaps.map((selection, index) => (
+                                  <div key={index} className="flex gap-2 items-center">
+                                      <select 
+                                          value={selection.soapIndex} 
+                                          onChange={e => handleSoapChange(index, 'soapIndex', e.target.value)} 
+                                          className="w-2/3 p-2 border rounded-md bg-white"
+                                      >
+                                          <option value="">-- Select Soap --</option>
+                                          {availableSoaps.map((s, idx) => <option key={s.name} value={idx}>{s.name} (Stock: {s.quantity})</option>)}
+                                      </select>
+                                      <input 
+                                          type="number" 
+                                          value={selection.quantity}
+                                          onChange={e => handleSoapChange(index, 'quantity', e.target.value)}
+                                          placeholder="Qty" 
+                                          className="w-1/3 p-2 border rounded-md"
+                                          min="1"
+                                      />
+                                      {selectedSoaps.length > 1 && (
+                                          <button onClick={() => removeSoapSelection(index)} className="text-red-500 hover:text-red-700">
+                                              <XCircle size={20} />
+                                          </button>
+                                      )}
+                                  </div>
+                              ))}
+                              {selectedSoaps.length < 5 && (
+                                <button onClick={addSoapSelection} className="flex items-center gap-2 text-sm text-blue-600 font-semibold hover:text-blue-800">
+                                    <PlusCircle size={16} /> Add another soap
+                                </button>
+                              )}
+                          </div>
+                          
+                          <button onClick={addProduct} className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 transition">Add Laundry</button>
+                      </div>
+                  </div>
+                  <div className="lg:col-span-2">
+                       <h3 className="text-xl font-bold mb-4 text-slate-700">Active Laundry List</h3>
+                       <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                          {activeProducts.length === 0 ? (
+                              <p className="text-center text-slate-500 mt-8">No active laundry items.</p>
+                          ) : (
+                              activeProducts.slice().reverse().map(p => (
+                                  <div key={p.id} className="p-4 bg-white rounded-lg shadow-sm border flex flex-col sm:flex-row gap-4">
+                                      <div className="flex-grow">
+                                          <p className="font-bold text-lg">{p.client}</p>
+                                          <p className="text-sm text-slate-600">Laundry Item</p>
+                                          <div className="text-xs mt-2 space-y-1 text-slate-500">
+                                              <p><strong>Weight:</strong> {p.kg} KG</p>
+                                              <p><strong>Soaps:</strong> {Array.isArray(p.soapsUsed) ? p.soapsUsed.map(s => `${s.quantity}x ${s.name}`).join(', ') : 'N/A'}</p>
+                                              <p><strong>Status:</strong> 
+                                                  <span className={`font-semibold ${p.ready ? 'text-green-600' : 'text-amber-600'}`}>
+                                                      {p.ready ? '✅ Ready for Pickup' : '⏳ In Progress'}
+                                                  </span>
+                                              </p>
+                                          </div>
+                                      </div>
+                                      <div className="flex flex-row sm:flex-col justify-between sm:justify-end items-center sm:items-end gap-2 flex-shrink-0 pt-4 sm:pt-0 border-t sm:border-none">
+                                          <div className="text-left sm:text-right mb-0 sm:mb-2">
+                                              <p className="font-bold text-lg text-blue-600">₱{calculateTotalPrice(p).toFixed(2)}</p>
+                                              <p className="text-xs text-slate-400">Laundry: ₱{p.price.toFixed(2)}</p>
+                                              <p className="text-xs text-slate-400">Soaps: ₱{calculateSoapsPrice(p.soapsUsed).toFixed(2)}</p>
+                                          </div>
+                                          <div className="flex flex-row sm:flex-col gap-2">
+                                              {p.ready ? (
+                                                  <button onClick={() => toggleReadyStatus(p.id, false)} className="text-xs w-24 bg-amber-500 text-white font-semibold py-1 px-2 rounded-md hover:bg-amber-600 transition">Not Ready</button>
+                                              ) : (
+                                                  <button onClick={() => toggleReadyStatus(p.id, true)} className="text-xs w-24 bg-green-500 text-white font-semibold py-1 px-2 rounded-md hover:bg-green-600 transition">Mark Ready</button>
+                                              )}
+                                              <button onClick={() => deleteProduct(p.id)} className="text-xs w-24 bg-red-500 text-white font-semibold py-1 px-2 rounded-md hover:bg-red-600 transition">Delete</button>
+                                          </div>
+                                      </div>
+                                  </div>
+                              ))
+                          )}
+                       </div>
+                  </div>
+              </div>
+          );
+      };
+
+      // --- ADMIN COMPONENT: AdminOrderHistoryTab ---
+      const AdminOrderHistoryTab = () => {
+          const [products] = useLocalStorage('products', []);
+
+          const completedOrders = useMemo(() =>
+              products
+              .filter(p => p.pickedUp)
+              .sort((a, b) => {
+                  const dateA = a.orderDate ? new Date(a.orderDate).getTime() : 0;
+                  const dateB = b.orderDate ? new Date(b.orderDate).getTime() : 0;
+                  return dateB - dateA;
+              }),
+          [products]);
+
+          const calculateTotalPrice = (product) => {
+              const laundryPrice = Number(product.price) || 0;
+              const soapsPrice = (Array.isArray(product.soapsUsed) ? product.soapsUsed : []).reduce((acc, s) => acc + (Number(s.price) * Number(s.quantity)), 0);
+              return (laundryPrice + soapsPrice).toFixed(2);
+          };
+
+          return (
+              <div>
+                  <h3 className="text-xl font-bold mb-4 text-slate-700">Completed Order History</h3>
+                  {completedOrders.length === 0 ? (
+                      <p className="text-center text-slate-500 mt-8">No completed orders found.</p>
+                  ) : (
+                      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                          {completedOrders.map(p => (
+                              <div key={p.id} className="p-4 bg-slate-50 rounded-lg border flex flex-col sm:flex-row gap-4">
+                                  <div className="flex-grow">
+                                      <p className="font-bold text-lg">{p.client}</p>
+                                      <p className="text-sm text-slate-600">Laundry Item</p>
+                                      <div className="text-xs mt-2 space-y-1 text-slate-500">
+                                          <p><strong>Order Date:</strong> {p.orderDate ? new Date(p.orderDate).toLocaleDateString() : 'N/A'}</p>
+                                          <p><strong>Soaps:</strong> {Array.isArray(p.soapsUsed) ? p.soapsUsed.map(s => `${s.quantity}x ${s.name}`).join(', ') : 'N/A'}</p>
+                                      </div>
+                                  </div>
+                                  <div className="flex-shrink-0 text-center sm:text-right">
+                                      <p className="font-bold text-lg text-blue-600">₱{calculateTotalPrice(p)}</p>
+                                      <p className="text-xs text-slate-400">Completed</p>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          );
+      };
+
+      // --- ADMIN COMPONENT: AdminSalesReportTab ---
+      const AdminSalesReportTab = () => {
+          const [products] = useLocalStorage('products', []);
+
+          const completedOrders = useMemo(() => products.filter(p => p.pickedUp), [products]);
+
+          const calculateSoapsPrice = (soapsUsed) => {
+              return (Array.isArray(soapsUsed) ? soapsUsed : []).reduce((acc, s) => acc + (Number(s.price) * Number(s.quantity)), 0);
+          };
+          
+          const calculateTotalPrice = (product) => {
+              const laundryPrice = Number(product.price) || 0;
+              const soapsPrice = calculateSoapsPrice(product.soapsUsed);
+              return laundryPrice + soapsPrice;
+          };
+
+          const totalRevenue = useMemo(() => {
+              return completedOrders.reduce((total, order) => total + calculateTotalPrice(order), 0);
+          }, [completedOrders]);
+
+          const totalLaundryRevenue = useMemo(() => {
+              return completedOrders.reduce((total, order) => total + (Number(order.price) || 0), 0);
+          }, [completedOrders]);
+
+          const totalSoapsRevenue = useMemo(() => {
+              return completedOrders.reduce((total, order) => total + calculateSoapsPrice(order.soapsUsed), 0);
+          }, [completedOrders]);
+
+          const StatCard = ({ icon, title, value, color }) => (
+              <div className={`p-4 bg-white rounded-xl shadow-md border-l-4 ${color}`}>
+                  <div className="flex items-center gap-4">
+                      <div className={`p-3 rounded-full bg-opacity-20 ${color.replace('border-', 'bg-')}`}>
+                          {icon}
+                      </div>
+                      <div>
+                          <p className="text-sm font-medium text-slate-500">{title}</p>
+                          <p className="text-2xl font-bold text-slate-800">{value}</p>
+                      </div>
+                  </div>
+              </div>
+          );
+
+          return (
+              <div>
+                  <h3 className="text-xl font-bold mb-6 text-slate-700">Sales Report</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+                      <StatCard icon={<DollarSign className="text-green-600"/>} title="Total Revenue" value={`₱${totalRevenue.toFixed(2)}`} color="border-green-500" />
+                      <StatCard icon={<Shirt className="text-blue-600"/>} title="Laundry Revenue" value={`₱${totalLaundryRevenue.toFixed(2)}`} color="border-blue-500" />
+                      <StatCard icon={<Droplets className="text-sky-600"/>} title="Soaps Revenue" value={`₱${totalSoapsRevenue.toFixed(2)}`} color="border-sky-500" />
+                      <StatCard icon={<CheckCircle className="text-amber-600"/>} title="Completed Orders" value={completedOrders.length} color="border-amber-500" />
+                  </div>
+
+                  <h4 className="text-lg font-bold mb-4 text-slate-600">Completed Orders Breakdown</h4>
+                  {completedOrders.length === 0 ? (
+                      <p className="text-center text-slate-500 mt-8">No completed orders to report.</p>
+                  ) : (
+                      <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
+                           {completedOrders.slice().reverse().map(p => (
+                              <div key={p.id} className="p-4 bg-slate-50 rounded-lg border flex flex-col sm:flex-row gap-4">
+                                  <div className="flex-grow">
+                                      <p className="font-bold text-lg">{p.client}</p>
+                                      <p className="text-sm text-slate-600">
+                                          Completed on: {p.orderDate ? new Date(p.orderDate).toLocaleDateString() : 'N/A'}
+                                      </p>
+                                  </div>
+                                  <div className="flex-shrink-0 text-center sm:text-right">
+                                      <p className="font-bold text-lg text-blue-600">₱{calculateTotalPrice(p).toFixed(2)}</p>
+                                      <p className="text-xs text-slate-400">Laundry: ₱{p.price.toFixed(2)}</p>
+                                      <p className="text-xs text-slate-400">Soaps: ₱{calculateSoapsPrice(p.soapsUsed).toFixed(2)}</p>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          );
+      };
+
+      // --- ADMIN COMPONENT: AdminDashboard ---
+      const AdminDashboard = ({ currentClient, onLogout }) => {
+        const [activeTab, setActiveTab] = useState(0);
+
+        const tabs = [
+          { label: 'Laundry', content: <AdminLaundryTab /> },
+          { label: 'Order History', content: <AdminOrderHistoryTab /> },
+          { label: 'Sales Report', content: <AdminSalesReportTab /> },
+          { label: 'Soaps', content: <AdminSoapsTab /> },
+          { label: 'Clients', content: <AdminClientsTab /> },
+        ];
+
+        return (
+          <div>
+            <div className="flex justify-between items-center mb-6 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">Admin Dashboard</h1>
+              <div className="flex items-center gap-4">
+                <span className="text-slate-600 font-medium hidden sm:block">Welcome, {currentClient.username}!</span>
+                <button onClick={onLogout} className="flex items-center gap-2 bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 transition-transform transform hover:-translate-y-0.5 shadow-md">
+                  <LogOut size={18} />
+                  Logout
+                </button>
+              </div>
+            </div>
+            <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+          </div>
+        );
+      };
+
+      // --- CLIENT COMPONENT: ClientNotificationsTab ---
+      const ClientNotificationsTab = ({ currentClient }) => {
+        const [clients, setClients] = useLocalStorage('clients', []);
+        const latestClientData = clients.find(c => c.username === currentClient.username);
+        const notifications = latestClientData ? latestClientData.notifications : [];
+
+        const clearNotifications = () => {
+          if (window.confirm("Are you sure you want to clear all notifications?")) {
+              const clientIndex = clients.findIndex(c => c.username === currentClient.username);
+              if (clientIndex !== -1) {
+                  const updatedClients = [...clients];
+                  updatedClients[clientIndex].notifications = [];
+                  setClients(updatedClients);
+              }
+          }
+        };
+
+        return (
+          <div>
+            <div className="flex justify-between items-center mb-4 flex-wrap">
+              <h3 className="text-xl font-bold text-slate-700">My Notifications</h3>
+              {notifications.length > 0 && (
+                  <button
+                      onClick={clearNotifications}
+                      className="flex items-center gap-2 bg-amber-500 text-white text-sm font-bold py-2 px-3 rounded-lg hover:bg-amber-600 transition-transform transform hover:-translate-y-0.5 shadow-sm"
+                      aria-label="Clear all notifications"
+                  >
+                      <Trash2 size={16} />
+                      Clear All
+                  </button>
+              )}
+            </div>
+            {notifications.length === 0 ? (
+              <p className="text-center text-slate-500 mt-8">You have no new notifications.</p>
+            ) : (
+              <ul className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 bg-slate-50 p-4 rounded-lg border">
+                {notifications.map((notification, index) => (
+                  <li key={index} className="p-3 bg-white border-l-4 border-blue-500 rounded-md text-slate-700 shadow-sm">
+                    {notification}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      };
+
+      // --- CLIENT COMPONENT: ClientLaundryTab ---
+      const ClientLaundryTab = ({ currentClient }) => {
+        const [products, setProducts] = useLocalStorage('products', []);
+
+        const handlePickup = (productId) => {
+            const productIndex = products.findIndex(p => p.id === productId);
+            if (productIndex === -1) return;
+            
+            if (window.confirm("Are you sure you want to mark this as received? The shop will then confirm the transaction.")) {
+                const updatedProducts = [...products];
+                updatedProducts[productIndex].pickedUp = true;
+                setProducts(updatedProducts);
+            }
+        };
+
+        const myProducts = products.filter(p => p.client === currentClient.username);
+
+        return (
+          <div>
+            <h3 className="text-xl font-bold mb-4 text-slate-700">My Laundry Status</h3>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+              {myProducts.length === 0 ? (
+                <p className="text-center text-slate-500 mt-8">You have no laundry items being processed.</p>
+              ) : (
+                myProducts.slice().reverse().map(p => (
+                  <div key={p.id} className="p-4 bg-white rounded-lg shadow-sm border flex flex-col sm:flex-row gap-4 items-center">
+                    <div className="flex-grow">
+                      <p className="font-bold text-lg">Laundry Item</p>
+                      <div className="text-xs mt-2 space-y-1 text-slate-500">
+                        <p><strong>Weight:</strong> {p.kg} KG</p>
+                        <p><strong>Soaps Used:</strong> {Array.isArray(p.soapsUsed) ? p.soapsUsed.map(s => `${s.quantity}x ${s.name}`).join(', ') : 'N/A'}</p>
+                        <p><strong>Total Price:</strong> <span className="font-bold">₱{((Number(p.price) || 0) + (Array.isArray(p.soapsUsed) ? p.soapsUsed : []).reduce((acc, s) => acc + (Number(s.price) * Number(s.quantity)), 0)).toFixed(2)}</span></p>
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0 text-center sm:text-right space-y-2">
+                       <p className="text-sm font-semibold">Status</p>
+                       <span className={`px-3 py-1 text-sm font-bold rounded-full ${p.pickedUp ? 'bg-slate-200 text-slate-700' : p.ready ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {p.pickedUp ? '✅ Received' : p.ready ? '✅ Ready for Pickup' : '⏳ In Progress'}
+                       </span>
+                       {p.ready && !p.pickedUp && (
+                           <button 
+                                onClick={() => handlePickup(p.id)}
+                                className="w-full bg-blue-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-blue-700 transition shadow-md"
+                           >
+                               I Received It
+                           </button>
+                       )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      // --- CLIENT COMPONENT: ClientSoapsTab ---
+      const ClientSoapsTab = () => {
+          const [soaps] = useLocalStorage('soaps', []);
+          return (
+              <div>
+                  <h3 className="text-xl font-bold mb-4 text-slate-700">Available Soaps</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[60vh] overflow-y-auto pr-2">
+                      {soaps.length === 0 ? (
+                          <p className="text-center text-slate-500 mt-8 col-span-full">No soaps are available at the moment.</p>
+                      ) : (
+                          soaps.map(soap => (
+                              <div key={soap.name} className="p-4 bg-white rounded-lg shadow-sm border flex flex-col text-center">
+                                  <img src={soap.image} alt={soap.name} className="w-full h-32 object-cover rounded-md mb-3" />
+                                  <div className="flex-grow">
+                                      <p className="font-bold text-lg">{soap.name}</p>
+                                      <p className="text-slate-600 font-semibold">₱{soap.price.toFixed(2)}</p>
+                                      <p className={`text-sm font-bold ${soap.quantity > 5 ? 'text-green-600' : soap.quantity > 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                                          {soap.quantity > 0 ? `${soap.quantity} in Stock` : 'Out of Stock'}
+                                      </p>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+          );
+      };
+
+      // --- CLIENT COMPONENT: ClientDashboard ---
+      const ClientDashboard = ({ currentClient, onLogout }) => {
+        const tabs = [
+          { label: 'Notifications', content: <ClientNotificationsTab currentClient={currentClient} /> },
+          { label: 'My Laundry', content: <ClientLaundryTab currentClient={currentClient} /> },
+          { label: 'Available Soaps', content: <ClientSoapsTab /> },
+        ];
+        
+        const [activeTab, setActiveTab] = useState(0);
+
+        return (
+          <div>
+            <div className="flex justify-between items-center mb-6 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">Client Dashboard</h1>
+               <div className="flex items-center gap-4">
+                <span className="text-slate-600 font-medium hidden sm:block">Welcome, {currentClient.username}!</span>
+                <button onClick={onLogout} className="flex items-center gap-2 bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 transition-transform transform hover:-translate-y-0.5 shadow-md">
+                  <LogOut size={18} />
+                  Logout
+                </button>
+              </div>
+            </div>
+            <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+          </div>
+        );
+      };
+
+      // --- AUTH COMPONENT: AuthPage ---
+      const AuthPage = ({ onLogin }) => {
+        const [isSigningUp, setIsSigningUp] = useState(false);
+        const [clients, setClients] = useLocalStorage('clients', []);
+
+        const [loginUsername, setLoginUsername] = useState('');
+        const [loginPassword, setLoginPassword] = useState('');
+        const [signupUsername, setSignupUsername] = useState('');
+        const [signupPassword, setSignupPassword] = useState('');
+        const [signupConfirm, setSignupConfirm] = useState('');
+        const [signupRole, setSignupRole] = useState(ClientRole.CLIENT);
+        const [error, setError] = useState('');
+        const [success, setSuccess] = useState('');
+        
+        const adminExists = useMemo(() => clients.some(u => u.role === ClientRole.ADMIN), [clients]);
+
+        const handleLogin = (e) => {
+          e.preventDefault();
+          setError('');
+          const client = clients.find(u => u.username === loginUsername && u.password === loginPassword);
+          if (client) {
+            onLogin(client);
+          } else {
+            setError('Invalid username or password.');
+          }
+        };
+
+        const handleSignup = (e) => {
+          e.preventDefault();
+          setError(''); setSuccess('');
+          if (!signupUsername.trim() || !signupPassword.trim()) {
+            setError('Please enter a username and password.'); return;
+          }
+          if (signupPassword !== signupConfirm) {
+            setError('Passwords do not match.'); return;
+          }
+          if (clients.some(u => u.username.toLowerCase() === signupUsername.toLowerCase())) {
+            setError('Username already exists.'); return;
+          }
+          if (signupRole === ClientRole.ADMIN && adminExists) {
+            setError('An admin account already exists. Only one is allowed.'); return;
+          }
+
+          const newClient = {
+            username: signupUsername, password: signupPassword,
+            role: signupRole, notifications: []
+          };
+          setClients([...clients, newClient]);
+          setSuccess('Account created successfully! Please log in.');
+          setIsSigningUp(false);
+          setSignupUsername(''); setSignupPassword(''); setSignupConfirm('');
+        };
+
+        return (
+          <div>
+            <h1 className="text-3xl font-bold text-center mb-2 text-slate-700">{isSigningUp ? 'Create Account' : 'Welcome Back'}</h1>
+            <p className="text-center text-slate-500 mb-6">{isSigningUp ? 'Join our community' : 'Log in to continue'}</p>
+            {error && <p className="text-red-500 text-center mb-4 bg-red-100 p-3 rounded-lg">{error}</p>}
+            {success && <p className="text-green-600 text-center mb-4 bg-green-100 p-3 rounded-lg">{success}</p>}
+            {isSigningUp ? (
+              <form onSubmit={handleSignup} className="space-y-4">
+                <input type="text" value={signupUsername} onChange={e => setSignupUsername(e.target.value)} placeholder="Username" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                <input type="password" value={signupPassword} onChange={e => setSignupPassword(e.target.value)} placeholder="Password" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                <input type="password" value={signupConfirm} onChange={e => setSignupConfirm(e.target.value)} placeholder="Confirm Password" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                <select value={signupRole} onChange={e => setSignupRole(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                  <option value={ClientRole.CLIENT}>Client</option>
+                  {!adminExists && <option value={ClientRole.ADMIN}>Admin</option>}
+                </select>
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-transform transform hover:-translate-y-1 shadow-md">Sign Up</button>
+                <p className="text-center">Already have an account? <button type="button" onClick={() => { setIsSigningUp(false); setError(''); setSuccess(''); }} className="text-blue-600 hover:underline font-semibold">Log In</button></p>
+              </form>
+            ) : (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <input type="text" value={loginUsername} onChange={e => setLoginUsername(e.target.value)} placeholder="Username" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Password" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-transform transform hover:-translate-y-1 shadow-md">Login</button>
+                <p className="text-center">Don't have an account? <button type="button" onClick={() => { setIsSigningUp(true); setError(''); setSuccess(''); }} className="text-blue-600 hover:underline font-semibold">Sign Up</button></p>
+              </form>
+            )}
+          </div>
+        );
+      };
+
+      // --- MAIN APP COMPONENT ---
+      const App = () => {
+        const [currentClient, setCurrentClient] = useLocalStorage('currentClient', null);
+
+        const handleLogin = (client) => {
+          setCurrentClient(client);
+        };
+
+        const handleLogout = () => {
+          setCurrentClient(null);
+        };
+
+        const renderDashboard = () => {
+          if (!currentClient) return null;
+          if (currentClient.role === ClientRole.ADMIN) {
+            return <AdminDashboard currentClient={currentClient} onLogout={handleLogout} />;
+          } else {
+            return <ClientDashboard currentClient={currentClient} onLogout={handleLogout} />;
+          }
+        };
+
+        return (
+          <div className="min-h-screen bg-slate-100 text-slate-800 flex items-center justify-center p-4">
+            <div className="container max-w-5xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-2xl">
+              {!currentClient ? (
+                <div className="max-w-md mx-auto">
+                  <AuthPage onLogin={handleLogin} />
+                </div>
+              ) : (
+                renderDashboard()
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      // --- RENDERER ---
+      const rootElement = document.getElementById('root');
+      if (rootElement) {
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(<App />);
+      } else {
+        console.error("Could not find root element to mount to");
+      }
+    </script>
+  </body>
+</html>
